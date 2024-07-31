@@ -23,10 +23,11 @@ const users = new Map();
 io.on("connection", (socket) => {
   console.log("a user connected", socket.id);
 
-  socket.on("join-room", (roomId, user, initilzation) => {
+  socket.on("join-room", (roomId, user) => {
     if (rooms.has(roomId)) {
       socket.join(roomId);
       rooms.get(roomId).push({ username: user, id: socket.id });
+      socket.broadcast.to(roomId).emit("new-user");
     } else {
       socket.join(roomId);
       rooms.set(roomId, [{ username: user, id: socket.id }]);
@@ -40,11 +41,36 @@ io.on("connection", (socket) => {
   });
 
   socket.on("message", (room, message, username) => {
-    console.log(message, room, "recieved");
     io.to(room).emit("message", message, username);
   });
+
+  socket.on("start-connection", (roomId) => {
+    if (rooms.get(roomId).length > 1) {
+      socket.broadcast.to(roomId).emit("start-rtc");
+    }
+  });
+
+  socket.on("send-offer", (offer, roomId) => {
+    socket.broadcast.to(roomId).emit("recieve-offer", offer);
+  });
+
+  socket.on("send-answer", (answer, roomId) => {
+    socket.broadcast.to(roomId).emit("recieve-answer", answer);
+  });
+
+  socket.on("send-candidate", (candidate, roomId) => {
+    socket.broadcast.to(roomId).emit("recieve-candidate", candidate);
+  });
+
+  socket.on("connection-finish", (roomId) => {
+    socket.broadcast.to(roomId).emit("rtc-finish");
+  });
+
+  socket.on("rtc-connection", (data, user, roomId) => {
+    console.log("rtc-connection", data, user);
+    socket.to(roomId).emit("rtc-connection", data, user);
+  });
   socket.on("disconnect", () => {
-    console.log(socket.id, "disconnected");
     removeDisconnectedUser(socket.id);
   });
 });
