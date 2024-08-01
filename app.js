@@ -2,16 +2,22 @@ const express = require("express");
 const cors = require("cors");
 const { Socket } = require("socket.io");
 const app = express();
+const router = require("./routes/userRoutes");
+const dotenv = require("dotenv");
+//
 const server = require("http").createServer(app);
 const io = require("socket.io")(server, {
   cors: {
     origin: "*",
   },
 });
-
 const PORT = process.env.PORT || 3001;
 
+dotenv.config({ path: "./.env" });
+
 app.use(cors("*"));
+app.use(express.json());
+// app.use("/", router);
 
 server.listen(PORT, () => {
   console.log("Listening to the port:", PORT);
@@ -40,8 +46,12 @@ io.on("connection", (socket) => {
     io.to(roomId).emit("joined", rooms.get(roomId), roomId);
   });
 
-  socket.on("message", (room, message, username) => {
-    io.to(room).emit("message", message, username);
+  socket.on("message", (room, message, messageId, username) => {
+    io.to(room).emit("message", message, messageId, username);
+  });
+
+  socket.on("message-delete", (roomId, messageId) => {
+    io.to(roomId).emit("delete-message", messageId);
   });
 
   socket.on("start-connection", (roomId) => {
