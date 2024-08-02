@@ -28,20 +28,36 @@ const users = new Map();
 
 io.on("connection", (socket) => {
   console.log("a user connected", socket.id);
-
-  socket.on("join-room", (roomId, user) => {
+  socket.on("join-room", (roomId, user, email) => {
+    // console.log(socket.id, "joined");
     if (rooms.has(roomId)) {
-      socket.join(roomId);
-      rooms.get(roomId).push({ username: user, id: socket.id });
-      socket.broadcast.to(roomId).emit("new-user");
+      const members = rooms.get(roomId);
+      // console.log(members);
+
+      if (members.size <= 1 || members.has(socket.id)) {
+        socket.join(roomId);
+        rooms
+          .get(roomId)
+          .set(socket.id, { username: user, id: socket.id, email });
+        if (members.size === 2) {
+          socket.broadcast.to(roomId).emit("new-user");
+          console.log(members);
+          const memArr = [];
+          members.forEach((user, _) => {
+            memArr.push(user);
+          });
+          io.to(roomId).emit("all-users", memArr);
+        }
+      } else {
+        socket.emit("room-full");
+        return;
+      }
     } else {
       socket.join(roomId);
-      rooms.set(roomId, [{ username: user, id: socket.id }]);
-    }
-    if (users.has(socket.id)) {
-      users.get(socket.id).push(roomId);
-    } else {
-      users.set(socket.id, [roomId]);
+      rooms.set(
+        roomId,
+        new Map().set(socket.id, { username: user, id: socket.id, email })
+      );
     }
     io.to(roomId).emit("joined", rooms.get(roomId), roomId);
   });
@@ -73,7 +89,15 @@ io.on("connection", (socket) => {
   });
 
   socket.on("connection-finish", (roomId) => {
-    socket.broadcast.to(roomId).emit("rtc-finish");
+    io.to(roomId).emit("rtc-finish");
+  });
+
+  socket.on("exit-user", (userId, roomId) => {
+    socket.broadcast.to(roomId).emit("left-room", socket.id);
+    if (rooms.has(roomId)) {
+      rooms.get(roomId).delete(userId);
+      socket.leave(roomId);
+    }
   });
 
   socket.on("rtc-connection", (data, user, roomId) => {
@@ -81,21 +105,11 @@ io.on("connection", (socket) => {
     socket.to(roomId).emit("rtc-connection", data, user);
   });
   socket.on("disconnect", () => {
-    removeDisconnectedUser(socket.id);
+    console.log(socket.id, "disconnected");
+    rooms.forEach((users) => {
+      if (users.has(socket.id)) {
+        users.delete(socket.id);
+      }
+    });
   });
 });
-
-function removeDisconnectedUser(userId) {
-  if (users.has(userId)) {
-    const roomsWithUser = users.get(userId);
-    for (const roomId of roomsWithUser) {
-      if (rooms.has(roomId)) {
-        const updatedUsers = rooms
-          .get(roomId)
-          .filter((user) => user.id !== userId);
-        rooms.set(roomId, updatedUsers);
-      }
-    }
-    users.delete(userId);
-  }
-}
