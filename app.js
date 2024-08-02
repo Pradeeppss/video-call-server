@@ -1,6 +1,5 @@
 const express = require("express");
 const cors = require("cors");
-const { Socket } = require("socket.io");
 const app = express();
 const router = require("./routes/userRoutes");
 const dotenv = require("dotenv");
@@ -29,11 +28,8 @@ const users = new Map();
 io.on("connection", (socket) => {
   console.log("a user connected", socket.id);
   socket.on("join-room", (roomId, user, email) => {
-    // console.log(socket.id, "joined");
     if (rooms.has(roomId)) {
       const members = rooms.get(roomId);
-      // console.log(members);
-
       if (members.size <= 1 || members.has(socket.id)) {
         socket.join(roomId);
         rooms
@@ -41,7 +37,6 @@ io.on("connection", (socket) => {
           .set(socket.id, { username: user, id: socket.id, email });
         if (members.size === 2) {
           socket.broadcast.to(roomId).emit("new-user");
-          console.log(members);
           const memArr = [];
           members.forEach((user, _) => {
             memArr.push(user);
@@ -72,7 +67,6 @@ io.on("connection", (socket) => {
 
   socket.on("start-connection", (roomId) => {
     if (rooms.get(roomId).length > 1) {
-      socket.broadcast.to(roomId).emit("start-rtc");
     }
   });
 
@@ -101,7 +95,6 @@ io.on("connection", (socket) => {
   });
 
   socket.on("rtc-connection", (data, user, roomId) => {
-    console.log("rtc-connection", data, user);
     socket.to(roomId).emit("rtc-connection", data, user);
   });
   socket.on("disconnect", () => {
