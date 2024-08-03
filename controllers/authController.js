@@ -30,7 +30,11 @@ export async function login(request, response) {
     }
     const accessToken = createJWTToken(user);
     return response
-      .cookie("Authorization", `Bearer ${accessToken}`, { httpOnly: true })
+      .cookie("Authorization", `Bearer ${accessToken}`, {
+        httpOnly: true,
+        sameSite: "none",
+        secure: true,
+      })
       .status(200)
       .send({
         status: "success",
