@@ -1,108 +1,23 @@
-const express = require("express");
-const cors = require("cors");
-const app = express();
-const router = require("./routes/userRoutes");
-const dotenv = require("dotenv");
+import express from "express";
+import cors from "cors";
+import cookieParser from "cookie-parser";
 //
-const server = require("http").createServer(app);
-const io = require("socket.io")(server, {
-  cors: {
-    origin: "*",
-  },
-});
-const PORT = process.env.PORT || 3001;
+import { app, server } from "./server.js";
+import "./loadenv.js";
+import router from "./routes/apiRoutes.js";
+import { authenticate } from "./controllers/authController.js";
+//
 
-dotenv.config({ path: "./.env" });
+// dotenv.config({ path: "./.env.development" });
 
-app.use(cors("*"));
+const PORT = process.env.PORT;
+
+app.use(cors({ origin: [process.env.ORIGIN], credentials: true }));
 app.use(express.json());
-// app.use("/", router);
+app.use(cookieParser());
+//
+app.use("/", router);
 
 server.listen(PORT, () => {
   console.log("Listening to the port:", PORT);
-});
-
-const rooms = new Map();
-const users = new Map();
-
-io.on("connection", (socket) => {
-  console.log("a user connected", socket.id);
-  socket.on("join-room", (roomId, user, email) => {
-    if (rooms.has(roomId)) {
-      const members = rooms.get(roomId);
-      if (members.size <= 1 || members.has(socket.id)) {
-        socket.join(roomId);
-        rooms
-          .get(roomId)
-          .set(socket.id, { username: user, id: socket.id, email });
-        if (members.size === 2) {
-          socket.broadcast.to(roomId).emit("new-user");
-          const memArr = [];
-          members.forEach((user, _) => {
-            memArr.push(user);
-          });
-          io.to(roomId).emit("all-users", memArr);
-        }
-      } else {
-        socket.emit("room-full");
-        return;
-      }
-    } else {
-      socket.join(roomId);
-      rooms.set(
-        roomId,
-        new Map().set(socket.id, { username: user, id: socket.id, email })
-      );
-    }
-    io.to(roomId).emit("joined", rooms.get(roomId), roomId);
-  });
-
-  socket.on("message", (room, message, messageId, username) => {
-    io.to(room).emit("message", message, messageId, username);
-  });
-
-  socket.on("message-delete", (roomId, messageId) => {
-    io.to(roomId).emit("delete-message", messageId);
-  });
-
-  socket.on("start-connection", (roomId) => {
-    if (rooms.get(roomId).length > 1) {
-    }
-  });
-
-  socket.on("send-offer", (offer, roomId) => {
-    socket.broadcast.to(roomId).emit("recieve-offer", offer);
-  });
-
-  socket.on("send-answer", (answer, roomId) => {
-    socket.broadcast.to(roomId).emit("recieve-answer", answer);
-  });
-
-  socket.on("send-candidate", (candidate, roomId) => {
-    socket.broadcast.to(roomId).emit("recieve-candidate", candidate);
-  });
-
-  socket.on("connection-finish", (roomId) => {
-    io.to(roomId).emit("rtc-finish");
-  });
-
-  socket.on("exit-user", (userId, roomId) => {
-    socket.broadcast.to(roomId).emit("left-room", socket.id);
-    if (rooms.has(roomId)) {
-      rooms.get(roomId).delete(userId);
-      socket.leave(roomId);
-    }
-  });
-
-  socket.on("rtc-connection", (data, user, roomId) => {
-    socket.to(roomId).emit("rtc-connection", data, user);
-  });
-  socket.on("disconnect", () => {
-    console.log(socket.id, "disconnected");
-    rooms.forEach((users) => {
-      if (users.has(socket.id)) {
-        users.delete(socket.id);
-      }
-    });
-  });
 });
