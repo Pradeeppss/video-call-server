@@ -2,41 +2,77 @@ import { addMessageToRoom } from "../controllers/chatController.js";
 import { io } from "../server.js";
 
 const rooms = new Map();
-const users = new Map();
+const emailToSocketId = new Map();
+const socketIdToEmail = new Map();
+let usersOnline = [];
+const callsWaiting = new Map();
 
 export function handleIoConnection(socket) {
   console.log("a user connected", socket.id);
-  socket.on("join-call", (roomId, user, email) => {
-    if (rooms.has(roomId)) {
-      const members = rooms.get(roomId);
-      if (members.size <= 1 || members.has(socket.id)) {
-        socket.join(roomId);
-        rooms
-          .get(roomId)
-          .set(socket.id, { username: user, id: socket.id, email });
-        if (members.size === 2) {
-          socket.broadcast.to(roomId).emit("new-user");
-          const memArr = [];
-          members.forEach((user, _) => {
-            memArr.push(user);
-          });
-          io.to(roomId).emit("all-users", memArr);
-        }
-      } else {
-        socket.emit("room-full");
-        return;
-      }
-    } else {
-      socket.join(roomId);
-      rooms.set(
-        roomId,
-        new Map().set(socket.id, { username: user, id: socket.id, email })
-      );
+  socket.on("user-online", (email) => {
+    usersOnline.push(email);
+    emailToSocketId.set(email, socket.id);
+    socketIdToEmail.set(socket.id, email);
+    if (callsWaiting.has(email)) {
+      socket.emit("call-request", callsWaiting.get(email));
     }
-    io.to(roomId).emit("joined", rooms.get(roomId), roomId);
   });
-  socket.on("join-room", (roomId) => {
+  socket.on("join-call", (roomId, user, email) => {
+    console.log(email, "joining call");
+
+    if (rooms.has(roomId)) {
+      rooms.get(roomId).forEach((user) => {
+        if (user.email === email) {
+          user.onCall = true;
+        }
+      });
+      callsWaiting.delete(email);
+      checkForBothUsers(roomId, socket);
+    }
+  });
+  function checkForBothUsers(roomId, socket) {
+    let both = true;
+    const users = rooms.get(roomId);
+    users.forEach((user) => {
+      if (!user.onCall) {
+        both = false;
+      }
+    });
+    console.log(both);
+    if (both) {
+      const users = rooms.get(roomId);
+      socket.broadcast.to(roomId).emit("new-user");
+      io.to(roomId).emit("all-users", users);
+    }
+  }
+  socket.on("make-call", (roomId, email, otherEmail) => {
+    if (usersOnline.includes(otherEmail)) {
+      console.log("making call reqiest", email);
+      const otherUserId = emailToSocketId.get(otherEmail);
+      socket.to(otherUserId).emit("call-request", roomId);
+    }
+    callsWaiting.set(otherEmail, roomId);
+  });
+  socket.on("cancel-call", (roomId, email) => {
+    callsWaiting.delete(email);
+  });
+
+  socket.on("join-room", (roomId, uOne, uTwo) => {
     socket.join(roomId);
+    if (rooms.has(roomId)) return;
+    const userOne = {
+      email: uOne.email,
+      username: uOne.username,
+      online: true,
+      onCall: false,
+    };
+    const userTwo = {
+      email: uTwo.email,
+      username: uTwo.username,
+      online: usersOnline.includes(uTwo.email),
+      onCall: false,
+    };
+    rooms.set(roomId, [userOne, userTwo]);
   });
 
   socket.on("message", (room, message, messageId, username, email) => {
@@ -69,10 +105,18 @@ export function handleIoConnection(socket) {
     io.to(roomId).emit("rtc-finish");
   });
 
-  socket.on("exit-user", (userId, roomId) => {
-    socket.broadcast.to(roomId).emit("left-room", socket.id);
+  socket.on("exit-user", (userId, roomId, email) => {
     if (rooms.has(roomId)) {
-      rooms.get(roomId).delete(userId);
+      rooms.get(roomId).forEach((user) => {
+        if (user.email === email) {
+          user.onCall = false;
+        } else {
+          if (usersOnline.includes(user.email)) {
+            const userId = emailToSocketId.get(user.email);
+            io.to(userId).emit("left-room", roomId);
+          }
+        }
+      });
       socket.leave(roomId);
     }
   });
@@ -80,12 +124,37 @@ export function handleIoConnection(socket) {
   socket.on("rtc-connection", (data, user, roomId) => {
     socket.to(roomId).emit("rtc-connection", data, user);
   });
+
+  socket.on("video-toggle", (roomId, value) => {
+    socket.broadcast.to(roomId).emit("toggle-video", value);
+  });
+  socket.on("audio-toggle", (roomId, value) => {
+    socket.broadcast.to(roomId).emit("toggle-audio", value);
+  });
+
   socket.on("disconnect", () => {
     console.log(socket.id, "disconnected");
-    rooms.forEach((users) => {
-      if (users.has(socket.id)) {
-        users.delete(socket.id);
+    const userEmail = socketIdToEmail.get(socket.id);
+    rooms.forEach((room, id) => {
+      if (room[0].email === userEmail) {
+        room[0].onCall = false;
+        if (usersOnline.includes(room[1].email)) {
+          const otherId = emailToSocketId.get(room[1].email);
+          io.to(otherId).emit("left-room", id);
+        }
+      } else if (room[1].email === userEmail) {
+        room[1].onCall = false;
+        if (usersOnline.includes(room[0].email)) {
+          const otherId = emailToSocketId.get(room[0].email);
+          io.to(otherId).emit("left-room", id);
+        }
       }
     });
+    socketIdToEmail.delete(socket.id);
+    if (userEmail) {
+      usersOnline = usersOnline.filter((email) => email !== userEmail);
+    }
   });
 }
+
+function checkRoomStatus() {}

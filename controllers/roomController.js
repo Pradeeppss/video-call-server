@@ -65,3 +65,5 @@ export async function getAllRooms(request, response) {
     });
   }
 }
+
+// export async function checkUserRoom
