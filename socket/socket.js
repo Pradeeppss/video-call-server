@@ -1,4 +1,7 @@
-import { addMessageToRoom } from "../controllers/chatController.js";
+import {
+  deleteMessage,
+  onMessageRecieved,
+} from "../controllers/chatController.js";
 import { io } from "../server.js";
 
 const rooms = new Map();
@@ -75,15 +78,6 @@ export function handleIoConnection(socket) {
     rooms.set(roomId, [userOne, userTwo]);
   });
 
-  socket.on("message", (room, message, messageId, username, email) => {
-    addMessageToRoom(room, email, message);
-    io.to(room).emit("message", message, messageId, username, email);
-  });
-
-  socket.on("message-delete", (roomId, messageId) => {
-    io.to(roomId).emit("delete-message", messageId);
-  });
-
   socket.on("start-connection", (roomId) => {
     if (rooms.get(roomId).length > 1) {
     }
@@ -155,6 +149,13 @@ export function handleIoConnection(socket) {
       usersOnline = usersOnline.filter((email) => email !== userEmail);
     }
   });
-}
+  socket.on("message", (room, message, messageId, username, email) => {
+    onMessageRecieved(room, email, message, messageId, username);
+    io.to(room).emit("message", message, messageId, username, email);
+  });
 
-function checkRoomStatus() {}
+  socket.on("message-delete", (roomId, messageId) => {
+    deleteMessage(roomId, messageId);
+    io.to(roomId).emit("delete-message", messageId);
+  });
+}
