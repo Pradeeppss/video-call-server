@@ -52,9 +52,13 @@ export function handleIoConnection(socket) {
     if (usersOnline.includes(otherEmail)) {
       console.log("making call reqiest", email);
       const otherUserId = emailToSocketId.get(otherEmail);
-      socket.to(otherUserId).emit("call-request", roomId);
+      rooms.get(roomId).forEach((user) => {
+        if (user.email === otherEmail && !user.onCall) {
+          socket.to(otherUserId).emit("call-request", roomId);
+          callsWaiting.set(otherEmail, roomId);
+        }
+      });
     }
-    callsWaiting.set(otherEmail, roomId);
   });
   socket.on("cancel-call", (roomId, email) => {
     callsWaiting.delete(email);

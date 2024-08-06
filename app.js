@@ -18,6 +18,7 @@ app.use(
       "http://localhost:4173",
       "http://localhost:3000",
       "http://52.66.200.68:3000",
+      "https://videochat.pradeepps.xyz",
       process.env.ORIGIN,
     ],
     credentials: true,
